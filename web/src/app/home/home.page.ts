@@ -1,9 +1,7 @@
-import { HttpClient } from '@angular/common/http';
 import { Component } from '@angular/core';
 import { Camera } from '../model/camera';
 import { CameraService } from '../service/camera.service';
 import { PermissionService } from '../service/permission.service';
-import { ToastService } from '../service/toast.service';
 
 @Component({
   selector: 'app-home',
@@ -15,13 +13,8 @@ export class HomePage {
   // 设备列表
   cameraMap = new Map<string, Camera>();
 
-  // 用户输入摄像头地址
-  url = '';
-
   constructor(
     private cameraService: CameraService,
-    private http: HttpClient,
-    private toast: ToastService,
     private permissionService: PermissionService
     ) {
       this.cameraService.getCameraMapChange().subscribe((data: Map<string, Camera>) => {
@@ -46,16 +39,11 @@ export class HomePage {
 
   }
 
-  
-  /**
-   * 搜索设备，有链接按照链接访问，无链接，自动搜索
-   */
-  searchCamera(){
-    if (this.url) {
-      this.cameraService.getCameraListByUrl(this.url);
-    }else {
+  doRefresh(event) {
+    setTimeout(() => {
       this.cameraService.getCameraList();
-    }
+      event.target.complete();
+    }, 1000);
   }
 
 }

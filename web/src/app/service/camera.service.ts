@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { ActivatedRoute, Router} from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { edger } from '@edgeros/web-sdk';
 import {
   NavController
@@ -9,8 +9,7 @@ import { BehaviorSubject } from 'rxjs';
 import { Camera } from '../model/camera';
 import { AlertService } from './alert.service';
 import { PermissionService } from './permission.service';
-import { ToastService } from './toast.service';
-
+import { StateService } from './state.service';
 
 @Injectable({
   providedIn: 'root',
@@ -42,70 +41,43 @@ export class CameraService {
 
   constructor(
     private http: HttpClient,
-    private toastService: ToastService,
     private router: Router,
     private nav: NavController,
     private alertService: AlertService,
     private permissionService: PermissionService,
-    private activeRoute: ActivatedRoute
+    private activeRoute: ActivatedRoute,
+    private stateService: StateService
   ) {
     edger.token().then((data: any) => {
-      if(data) {
+      if (data) {
         this.payload = data;
       } else {
-        this.toastService.failPresentToast('请先登录！');
+        if(this.stateService.getActive()) {
+          edger.notify.warning('请先登录！');
+        }
       }
-
     }).catch((err) => {
       console.error(err);
     });
     edger.onAction('token', (data: any) => {
       console.log(data);
-      if(data) {
+      if (data) {
         this.payload = data;
       } else {
-        this.toastService.failPresentToast('请先登录！');
+        if(this.stateService.getActive()) {
+          edger.notify.warning('请先登录！');
+        }
       }
 
     });
-    setTimeout(()=>this.timerGetCameraList(), 500);
-  }
-
-  /**
-   * 根据url搜索特定摄像头
-   * @param url 
-   */
-  getCameraListByUrl(url: string) {
-    if(this.permissionService.isPermissions(['network'])) {
-      this.http
-      .get('/api/search' + '?url=' + url, { headers: this.getHttpHeaders() })
-      .subscribe(
-        (cameras: Camera[]) => {
-          if (cameras === null || cameras.length === 0) {
-            this.toastService.failPresentToast('未发现设备！');
-          }
-          cameras.forEach((value) => {
-            if (!this.cameraMap.has(value.devId)) {
-              this.cameraMap.set(value.devId, value);
-            } else {
-              this.toastService.successPresentToast(`设备：${value.devId}已存在`);
-            }
-          });
-          this.cameraMapChange.next(this.cameraMap);
-        },
-        (error) => {
-          console.log(error);
-          this.toastService.failPresentToast(error.error);
-        }
-      );
-    }
+    setTimeout(() => this.timerGetCameraList(), 500);
   }
 
   /**
    * 定时查询设备列表
    */
   timerGetCameraList() {
-      setInterval(() => this.getCameraList(), 5000); 
+    setInterval(() => this.getCameraList(), 5000);
   }
 
   /**
@@ -113,33 +85,38 @@ export class CameraService {
    */
   getCameraList() {
     let permission = this.permissionService.isPermissions(['network']);
-    if(permission) {
+    if (permission) {
       this.http
-      .get('/api/list', { headers: this.getHttpHeaders() })
-      .subscribe((cameras: Camera[]) => {
-        this.cameraMap.clear();
-        cameras.forEach((value) => {
-          this.cameraMap.set(value.devId, value);
-        });
-        this.cameraMapChange.next(this.cameraMap);
-        if (this.thisCamera) {
-          if (this.cameraMap.has(this.thisCamera.devId)) {
-            if (this.cameraMap.get(this.thisCamera.devId).status) {
-              this.thisCamera = this.cameraMap.get(this.thisCamera.devId);
+        .get('/api/list', { headers: this.getHttpHeaders() })
+        .subscribe((cameras: Camera[]) => {
+          if (cameras.length === 0) {
+            if(this.stateService.getActive()) {
+              edger.notify.info(`暂无设备！`);
+            }
+          }
+          this.cameraMap.clear();
+          cameras.forEach((value) => {
+            this.cameraMap.set(value.devId, value);
+          });
+          this.cameraMapChange.next(this.cameraMap);
+          if (this.thisCamera) {
+            if (this.cameraMap.has(this.thisCamera.devId)) {
+              if (this.cameraMap.get(this.thisCamera.devId).status) {
+                this.thisCamera = this.cameraMap.get(this.thisCamera.devId);
+              } else {
+                this.lostAlertConfirm(
+                  `当前设备：${this.thisCamera.alias} 已下线！`
+                );
+                this.thisCamera = null;
+              }
             } else {
               this.lostAlertConfirm(
                 `当前设备：${this.thisCamera.alias} 已下线！`
               );
               this.thisCamera = null;
             }
-          } else {
-            this.lostAlertConfirm(
-              `当前设备：${this.thisCamera.alias} 已下线！`
-            );
-            this.thisCamera = null;
           }
-        }
-      });
+        });
     }
   }
 
@@ -149,28 +126,17 @@ export class CameraService {
    * @param camera 
    */
   getCameraDetails(camera: Camera) {
-    console.log(this.activeRoute);
-    if(this.permissionService.isPermissions(['rtsp'])) {
+    if (this.permissionService.isPermissions(['rtsp'])) {
       if (this.detailsLock) {
         return;
       }
-    this.detailsLock = true; 
-    console.log(`getCameraDetails--------------${camera}`);
+      this.detailsLock = true;
       this.http
-      .get('/api/select/' + '?devId=' + camera.devId, {
-        headers: this.getHttpHeaders(),
-      })
-      .subscribe(
-        (res: any) => {
-          if (res === 'error') {
-            this.toastService.failPresentToast(`连接不到设备 ${camera.devId}`);
-            this.detailsLock = false;
-          } else if (res === 'invalid') {
-            this.toastService.failPresentToast(`查找不到设备 ${camera.devId}`);
-            this.cameraMap.delete(camera.devId);
-            this.cameraMapChange.next(this.cameraMap);
-            this.detailsLock = false;
-          } else {
+        .get('/api/select/' + '?devId=' + camera.devId, {
+          headers: this.getHttpHeaders(),
+        })
+        .subscribe(
+          (res: any) => {
             if (res.result) {
               if (res.login) {
                 this.detailsLock = false;
@@ -180,23 +146,32 @@ export class CameraService {
                 camera.enableMove = res.enableMove;
                 camera.autoMode = res.autoMode;
                 this.thisCamera = camera;
-                console.log(`logintrue-----------${JSON.stringify(camera)}`);
                 this.router.navigate(['/details', camera]);
                 this.detailsLock = false;
               }
             } else {
-              this.toastService.failPresentToast(res.msg);
               this.detailsLock = false;
+              if(this.stateService.getActive()) {
+                if (res.code === 50001) {
+                  edger.notify.error(`流媒体启动失败，请检查权限！`);
+                } else if (res.code === 50002) {
+                  edger.notify.error(`无效设备！`);
+                } else if (res.code === 40307) {
+                  edger.notify.error(`缺少 "视频流" 权限！`);
+                } else {
+                  edger.notify.error(`未知错误！`);
+                }
+              }
             }
+
+          },
+          (error) => {
+            console.log(error);
+            this.detailsLock = false;
+            edger.notify.error(error.error);
           }
-        },
-        (error) => {
-          console.log(error);
-          this.detailsLock = false;
-          this.toastService.failPresentToast(error.error);
-        }
-      );
-    } 
+        );
+    }
   }
 
   // 获取设备列表可观察对象
@@ -228,21 +203,27 @@ export class CameraService {
    * @param camera 
    */
   loginDevice(loginInfo: any, camera: Camera) {
-    console.log(`login device-------------------------`);
-    this.http.post('/api/login', loginInfo, {headers: this.getHttpHeaders()}).subscribe((res: any) => {
+    this.http.post('/api/login', loginInfo, { headers: this.getHttpHeaders() }).subscribe((res: any) => {
       console.log(res);
-      if (!res.result) {
-        this.toastService.failPresentToast(res.msg);
-      } else {
+      if (res.result) {
         camera.videoUrl = res.videoUrl;
         camera.enableMove = res.enableMove;
         camera.autoMode = res.autoMode;
         this.thisCamera = camera;
         this.router.navigate(['/details', camera]);
+      } else {
+        this.detailsLock = false;
+        if(this.stateService.getActive()) {
+          if (res.code === 50001) {
+            edger.notify.error(`流媒体启动失败，请检查权限！`);
+          } else if (res.code === 50002) {
+            edger.notify.error(`无效设备！`);
+          } else if (res.code === 50003) {
+            edger.notify.error(`登录设备失败！`);
+          }
+        }
       }
-      this.detailsLock = false;
     }, (err) => {
-      console.log(`err----------------------------`);
       console.error(err);
       this.detailsLock = false;
     });
@@ -265,6 +246,6 @@ export class CameraService {
 
   getHttpHeaders() {
     return new HttpHeaders().set('edger-token', this.payload.token).
-    set('edger-srand', this.payload.srand);
+      set('edger-srand', this.payload.srand);
   }
 }

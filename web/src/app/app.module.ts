@@ -3,16 +3,14 @@ import { BrowserModule, HammerModule } from '@angular/platform-browser';
 import { RouteReuseStrategy } from '@angular/router';
 
 import { IonicModule, IonicRouteStrategy } from '@ionic/angular';
-import { SplashScreen } from '@ionic-native/splash-screen/ngx';
-import { StatusBar } from '@ionic-native/status-bar/ngx';
 
 import { AppComponent } from './app.component';
 import { AppRoutingModule } from './app-routing.module';
 import { HttpClientModule } from '@angular/common/http';
 import { CameraService } from './service/camera.service';
-import { ToastService } from './service/toast.service';
 import { AlertService } from './service/alert.service';
 import { PermissionService } from './service/permission.service';
+import { StateService } from './service/state.service';
 
 @NgModule({
   declarations: [AppComponent],
@@ -23,14 +21,12 @@ import { PermissionService } from './service/permission.service';
     backButtonIcon: 'chevron-back'
   }), AppRoutingModule, HttpClientModule],
   providers: [
-    StatusBar,
-    SplashScreen,
     { provide: RouteReuseStrategy, useClass: IonicRouteStrategy },
     CameraService,
-    ToastService,
     AlertService,
-    PermissionService
+    PermissionService,
+    StateService
   ],
   bootstrap: [AppComponent]
 })
-export class AppModule {}
+export class AppModule {} 

@@ -7,13 +7,15 @@ import { Camera } from '../model/camera';
 })
 export class AlertService {
 
+  openAppAlertShow = false;
+
   constructor(private alertController: AlertController) { }
 
   /**
    * 设备掉线提示框
    * @param msg 
    */
-  async lostAlertConfirm(msg: string, callback: ()=> void) {
+  async lostAlertConfirm(msg: string, callback: () => void) {
     const alert = await this.alertController.create({
       cssClass: 'my-custom-class',
       header: '设备信息',
@@ -29,6 +31,43 @@ export class AlertService {
     });
 
     await alert.present();
+  }
+
+  /**
+   * 打开应用弹框
+   * @param msg 
+   * @param callback 
+   */
+  async openAppAlertConfirm(msg: string, callback: () => void) {
+    if (!this.openAppAlertShow) {
+      this.openAppAlertShow = true;
+      const alert = await this.alertController.create({
+        cssClass: 'my-custom-class',
+        header: '打开应用',
+        message: `<strong>${msg}</strong>`,
+        buttons: [
+          {
+            text: '取消',
+            role: 'cancel',
+            cssClass: 'secondary',
+            handler: () => {
+              this.openAppAlertShow = false;
+              console.log('Confirm Cancel');
+            },
+          },
+          {
+            text: '打开',
+            handler: () => {
+              this.openAppAlertShow = false;
+              callback();
+            },
+          },
+        ],
+      });
+
+      await alert.present();
+    }
+
   }
 
   /**

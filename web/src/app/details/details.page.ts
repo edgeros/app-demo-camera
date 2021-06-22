@@ -1,10 +1,10 @@
 import { Component, OnInit } from "@angular/core";
-import { ActivatedRoute, Router } from "@angular/router";
+import { ActivatedRoute } from "@angular/router";
 import { edger } from "@edgeros/web-sdk";
 import { Camera } from "../model/camera";
 import { CameraService } from "../service/camera.service";
 import { PermissionService } from "../service/permission.service";
-import { ToastService } from "../service/toast.service";
+import { StateService } from "../service/state.service";
 
 declare var NodePlayer: any;
 declare var MediaClient: any;
@@ -128,8 +128,8 @@ export class DetailsPage implements OnInit {
   constructor(
     private activatedRoute: ActivatedRoute,
     private cameraService: CameraService,
-    private toast: ToastService,
     private permissionService: PermissionService,
+    private stateService: StateService
   ) {
     const page = this.getPageSize();
     this.clientHeight = page.height;
@@ -156,9 +156,6 @@ export class DetailsPage implements OnInit {
     console.log(
       `onInit autoMode: ${this.autoMode} color: ${this.buttons.tracking.color}`
     );
-    // window.ontouchstart = (e: Event) => {
-    //   e.preventDefault();
-    // };
     this.setStretchColor();
     this.initDom();
     this.initVideoSize();
@@ -202,7 +199,9 @@ export class DetailsPage implements OnInit {
     }
     return page;
   }
-  // 初始化直播插件
+  /**
+   * 初始化直播插件
+   */
   initNP() {
     NodePlayer.load(() => {
       this.np = new NodePlayer();
@@ -484,9 +483,8 @@ export class DetailsPage implements OnInit {
   closeTracking() {
     this.mediaClient.emit("camera-mode", false, (client, ret) => {
       if (!ret.result) {
-        this.toast.failPresentToast(ret.msg);
+        edger.notify.error(ret.msg);
       }
-      console.log("autoMode:" + ret[0].autoMode);
       this.autoMode = ret.autoMode;
       this.setTrackingColor();
       if (this.autoMode) {
@@ -547,7 +545,9 @@ export class DetailsPage implements OnInit {
     this.mediaClient.emit("camera-move", obj, (client, ret) => {
       console.log(ret);
       if (!ret.result) {
-        this.toast.failPresentToast(ret.msg);
+        if(this.stateService.getActive()) {
+          edger.notify.error(ret.msg);
+        }
         return;
       }
       if (this.lock && ret.result) {
@@ -556,8 +556,8 @@ export class DetailsPage implements OnInit {
         }, 800);
       } else {
         this.mediaClient.emit("camera-stop", (client, ret) => {
-          if (!ret.result) {
-            this.toast.failPresentToast(ret.msg);
+          if (!ret.result && this.stateService.getActive()) {
+            edger.notify.error(ret.msg);
           }
         });
       }
@@ -593,8 +593,8 @@ export class DetailsPage implements OnInit {
     this.lock = false;
     clearTimeout(this.moveTimeout);
     this.mediaClient.emit("camera-stop", (client, ret) => {
-      if (!ret.result) {
-        this.toast.failPresentToast(ret.msg);
+      if (!ret.result && this.stateService.getActive()) {
+        edger.notify.error(ret.msg);
       }
     });
   }
@@ -605,8 +605,8 @@ export class DetailsPage implements OnInit {
   cameraHome() {
     if (this.connected) {
       this.mediaClient.emit("camera-home", (client, ret) => {
-        if (!ret.result) {
-          this.toast.failPresentToast(ret.msg);
+        if (!ret.result && this.stateService.getActive()) {
+          edger.notify.error(ret.msg);
         }
       });
     }
@@ -622,10 +622,9 @@ export class DetailsPage implements OnInit {
     }
     if (this.connected) {
       this.mediaClient.emit("camera-mode", !this.autoMode, (client, ret) => {
-        if (!ret.result) {
-          this.toast.failPresentToast(ret.msg);
+        if (!ret.result && this.stateService.getActive()) {
+          edger.notify.error(ret.msg);
         }
-        console.log("autoMode:" + ret.autoMode);
         this.autoMode = ret.autoMode;
         this.setTrackingColor();
         if (this.autoMode) {
