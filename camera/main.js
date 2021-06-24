@@ -120,36 +120,6 @@ app.get('/api/list', async (req, res) => {
 });
 
 /*
- * req: url
- * res: [{devId, alias, report, status}]
- */
-app.get('/api/search', (req, res) => {
-	console.log('Recv camera-search message.');
-	if (!server) {
-		res.json([]);
-		return;
-	}
-	var url = req.query.url;
-	if (typeof url !== 'string') {
-		res.send(JSON.stringify([]));
-		return;
-	}
-	server.fetchMedia(url, (media) => {
-		var ret = [];
-		if (!(media instanceof Error)) {
-			ret = [{
-				devId: media.key,
-				alias: media.sid,
-				report: media.sid,
-				status: true,
-			}];
-			console.info(`Device key: ${media.key}`);
-		}
-		res.send(JSON.stringify(ret));
-	});
-});
-
-/*
  * req: devId
  * res: {result, msg, login, videoUrl, enableMove, autoMode}
  */
@@ -158,7 +128,8 @@ app.get('/api/select', async (req, res) => {
 	if (!server) {
 		return res.json({
 			result: false,
-			msg: 'Media not start.'
+			code: 50001,
+			msg: '流媒体启动失败！'
 		});
 	}
 
@@ -167,14 +138,16 @@ app.get('/api/select', async (req, res) => {
 	} catch(err) {
 		return res.json({
 			result: false,
-			msg: 'Need rtsp permission.'
+			code: 40307,
+			msg: '缺少 rtsp 权限！'
 		});
 	}
 
-	var ret = {result: false, msg: 'error', login: false};
+	var ret = {result: false, code: 20000, msg: 'error', login: false};
 	var deviceId = req.query.devId;
 	if (!deviceId) {
-		ret.msg = `Invalid device id: ${deviceId}`;
+		ret.msg = `无效的设备: ${deviceId}`;
+		ret.code = 50002;
 		console.warn(ret.msg);
 		res.send(JSON.stringify(ret));
 		return;
@@ -182,7 +155,8 @@ app.get('/api/select', async (req, res) => {
 
 	server.selectMedia(deviceId, (media) => {
 		if (media instanceof Error) {
-			ret.msg = `Invalid device id: ${deviceId}`;
+			ret.msg = `无效的设备: ${deviceId}`;
+			ret.code = 50002;
 			console.warn(ret.msg);
 		} else if (!media) {
 			ret.result = true;
@@ -208,11 +182,12 @@ app.post('/api/login', (req, res) => {
 	if (!server) {
 		return res.json({
 			result: false,
-			msg: 'Media not start.'
+			code: 50001,
+			msg: '流媒体启动失败！'
 		});
 	}
 
-	var ret = {result: false, msg: 'error'};
+	var ret = {result: false, code: 20000, msg: 'error'};
 	var data = [];
 	req.on('data', (buf) => {
 		data.push(buf);
@@ -221,12 +196,12 @@ app.post('/api/login', (req, res) => {
 	req.on('end', async () => {
 		try {
 			await util.checkPerm(['rtsp']);
-
 			data = Buffer.concat(data);
 			var info = JSON.parse(data.toString());
 			var deviceId = info.devId;
 			if (!deviceId) {
-				ret.msg = `Invalid device id: ${deviceId}`;
+				ret.msg = `无效的设备: ${deviceId}`;
+				ret.code =  50002;
 				console.warn(ret.msg);
 				res.send(JSON.stringify(ret));
 				return;
@@ -234,7 +209,8 @@ app.post('/api/login', (req, res) => {
 
 			server.loginMedia(info, (media) => {
 				if (!media || media instanceof Error) {
-					ret.msg = `Device ${deviceId} login fail.`;
+					ret.msg = `设备 ${deviceId} 登录失败！`;
+					ret.code = 50003;
 					console.warn(ret.msg);
 				} else {
 					ret.result = true;
@@ -243,52 +219,6 @@ app.post('/api/login', (req, res) => {
 					ret.enableMove = media.enableMove;
 					ret.autoMode = media.autoMove;
 				}
-				res.send(JSON.stringify(ret));
-			});
-
-		} catch(e) {
-			ret.result = false;
-			ret.msg = e.message;
-			console.warn(ret.msg);
-			res.send(JSON.stringify(ret));
-			return;
-		}
-	});
-});
-
-/*
- * req: devId
- * res: {result, msg}
- */
-app.put('/api/close', (req, res) => {
-	console.log('Recv camera-close message.');
-	if (!server) {
-		res.json({
-			result: false,
-			msg: 'Media not start.'
-		});
-		return;
-	}
-	var ret = {result: false, msg: 'error'};
-	var data = [];
-	req.on('data', (buf) => {
-		data.push(buf);
-	});
-
-	req.on('end', () => {
-		try {
-			data = Buffer.concat(data);
-			var deviceId = data.toString();
-			if (!deviceId) {
-				ret.msg = `Invalid device id: ${deviceId}`;
-				console.warn(ret.msg);
-				res.send(JSON.stringify(ret));
-				return;
-			}
-
-			server.closeMedia(deviceId, (isOk) => {
-				ret.result = isOk;
-				ret.msg = isOk ? 'ok' : `Device ${deviceId} close fail.`;
 				res.send(JSON.stringify(ret));
 			});
 
