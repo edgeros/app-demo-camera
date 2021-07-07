@@ -10,9 +10,7 @@
  *
  */
 
-var URL = require('url');
 var WebMedia = require('webmedia');
-var onvif = require('@edgeros/jsre-onvif');
 var CameraSource = require('@edgeros/jsre-camera-src');
 const {Media, Manager} = require('@edgeros/jsre-medias');
 var checkPerm = require('./util').checkPerm;
@@ -249,163 +247,103 @@ class MediaApi {
 	}
 
 	/*
-	 * getMediaList()
+	 * getDevList(search, cb)
 	 */
-	getMediaList() {
+	getDevList(search, cb) {
 		var mediaMgr = this.mediaMgr;
-		var devs = {};
-		mediaMgr.iterDev((key, dev) => {
-			devs[key] = {
-				devId: key,
-				alias: `${dev.hostname}:${dev.port}${dev.path}`,
-				report: dev.urn,
-				status: false
-			}
-		});
-		mediaMgr.iterCam((key, cam) => {
-			devs[key] = {
-				devId: key,
-				alias: `${cam.hostname}:${cam.port}${cam.path}`,
-				report: cam.urn,
-				status: false
-			}
-		});
-		mediaMgr.iterMedia((key, media) => {
-			devs[key] = {
-				devId: media.key,
-				alias: media.alias,
-				report: media.sid,
-				status: true
-			}
-		});
-
-		var infos = [];
-		for (var key in devs) {
-			infos.push(devs[key]);
-		}
-		return infos;
-	}
-
-	/*
-	 * fetchMedia(url, cb)
-	 */
-	fetchMedia(url, cb) {
-		try {
-			var parts = URL.parse(url);
-			if (typeof parts.auth === 'string') {
-				var fields = parts.auth.split(':');
-				parts.user = fields[0];
-				parts.pass = fields[1];
-			}
-		} catch(e) {
-			cb(e);
-		}
-		if (!parts) {
-			cb(new Error('Url invalid.'));
-		}
-		var mediaMgr = this.mediaMgr;
-		var key = Manager.key(parts);
-		var media = mediaMgr.findMedia(key);
-		if (media) {
-			cb(media);
+		if (search) {
+			mediaMgr.search();
+			setTimeout(() => {
+				cb(getDevs());
+			}, 1000);
 		} else {
-			mediaMgr.createMedia(key, parts, cb);
+			cb(getDevs());
 		}
+
+		function getDevs() {
+			var devs = [];
+			mediaMgr.iterDev((key, dev) => {
+				var info = dev.dev;
+				var item = {
+					devId: key,
+					alias: `${info.hostname}:${info.port}${info.path}`,
+					report: info.urn,
+					streams: getStreams(dev)
+				};
+				devs.push(item);
+			});
+			return devs;
+		}
+
+		function getStreams(dev) {
+			var streams = [];
+			mediaMgr.iterStream(dev.key, (token, stream) => {
+				streams.push({
+					streamId: token,
+					alias: stream.url,
+					width: stream.width,
+					height: stream.height,
+					status: stream.media ? true: false
+				});
+			});
+			return streams;
+		};
 	}
 
 	/*
-	 * selectMedia(devId, cb)
+	 * getStreams(devId, opt, cb)
 	 */
-	selectMedia(devId, cb) {
+	getStreams(devId, opt, cb) {
 		var mediaMgr = this.mediaMgr;
-		var media = mediaMgr.findMedia(devId);
+		var dev = mediaMgr.findDev(devId);
+		if (!dev) {
+			return cb([]);
+		}
+		mediaMgr.createStream(devId, opt, (err, streams) => {
+			if (err) {
+				return cb([]);
+			}
+			var ret = [];
+			for (var token in streams) {
+				var stream = streams[token];
+				ret.push({
+					streamId: token,
+					alias: stream.url,
+					width: stream.width,
+					height: stream.height,
+					status: stream.media ? true: false
+				});
+			}
+			cb(ret);
+		});
+	}
+
+	/*
+	 * loginMedia(devId, token, opt, cb)
+	 */
+	loginMedia(devId, token, opt, cb) {
+		var mediaMgr = this.mediaMgr;
+		var media = mediaMgr.findMedia(devId, token);
 		if (media) { /* Media already conect. */
 			return cb(media);
 		}
-
-		var cam = mediaMgr.findCam(devId);
-		if (cam) { /* Media need connect. */
-			var urlParts = mediaMgr.getCamUrl(cam);
-			var parts = {
-				user: urlParts.user || cam.username,
-				pass: urlParts.pass || cam.password,
-				hostname: urlParts.hostname,
-				port: urlParts.port || 554,
-				path: urlParts.path || '/'
+		return mediaMgr.createMedia(devId, token, opt, (err, media) => {
+			if (err && err.type == 'FAIL') {
+				cb();
+			} else if (err) {
+				cb(err);
+			} else {
+				cb(media);
 			}
-			return mediaMgr.createMedia(devId, parts, (media) => {
-				if (media instanceof Error) {
-					cb();
-				} else {
-					cb(media);
-				}
-			});
-		}
-
-		if (mediaMgr.findDev(devId)) { /* Device invalid, try name/pwd to get media uri. */
-			cb();
-		} else {
-			var err = new Error('Device invalid.');
-			err.code = 'invalid';
-			cb(err);
-		}
+		});
 	}
-
+ 
 	/*
-	 * loginMedia(info, cb)
+	 * closeMedia(devId, token, cb)
 	 */
-	loginMedia(info, cb) {
-		var mediaMgr = this.mediaMgr;
-		var devId = info.devId;
-		var cam = mediaMgr.findCam(devId);
-		var urlParts = mediaMgr.getCamUrl(cam);
-		if (urlParts) {
-			var parts = {
-				user: info.username,
-				pass: info.password,
-				hostname: urlParts.hostname,
-				port: urlParts.port || 554,
-				path: urlParts.path || '/'
-			}
-			return mediaMgr.createMedia(devId, parts, cb);
-		}
-
-		var dev = mediaMgr.findDev(devId);
-		if (dev) {
-			dev.username = info.username;
-			dev.password = info.password;
-			var cam = new onvif.Cam(dev);
-			cam.on('connect', (err) => {
-				if (err) {
-					console.warn(`Camera(${cam.urn}) connection fail:`, err);
-					cb(err);
-					return;
-				}
-				cam.getStreamUri({protocol:'RTSP'}, (err, stream) => {
-					if (err) {
-						console.warn(`Camera(${cam.urn}) get uri fail:`, err);
-						cb(err);
-					} else {
-						console.info(`Camera(${cam.urn}) get uri:`, stream.uri);
-						mediaMgr.removeDev(dev);
-						mediaMgr.addCam(stream.uri, cam);
-						this.selectMedia(devId, cb);
-					}
-				});
-			});
-		} else {
-			var err = new Error('Device invalid.');
-			err.code = 'invalid';
-			cb(err);
-		}
-	}
-
-	/*
-	 * closeMedia(devId, cb)
-	 */
-	closeMedia(devId, cb) {
+	closeMedia(devId, token, cb) {
 		console.log('Recv camera-close message.', devId);
-		this.mediaMgr.destroyMedia(devId, cb);
+		this.mediaMgr.destroyMedia(devId, token, cb);
 	}
 }
 

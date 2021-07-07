@@ -81,7 +81,7 @@
                 "output": "./svg"
               },
               {
-                "glob": "**/chevron-forward.svg",
+                "glob": "**/chevron-forward-outline.svg",
                 "input": "node_modules/ionicons/dist/ionicons/svg",
                 "output": "./svg"
               },
@@ -112,6 +112,11 @@
               },
               {
                 "glob": "**/caret-back-sharp.svg",
+                "input": "node_modules/ionicons/dist/ionicons/svg",
+                "output": "./svg"
+              },
+              {
+                "glob": "**/chevron-down-outline.svg",
                 "input": "node_modules/ionicons/dist/ionicons/svg",
                 "output": "./svg"
               }

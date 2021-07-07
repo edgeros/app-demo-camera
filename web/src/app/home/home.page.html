@@ -14,18 +14,32 @@
     <ion-list-header>
       设备列表
     </ion-list-header>
-    <ion-item *ngFor="let item of cameraMap | keyvalue" button detail (click)="getCameraDetailsPage(item.value)">
-      <ion-avatar slot="start">
-        <img src="./assets/img/camera.png" />
-      </ion-avatar>
-      <ion-label>
-        <h2>{{item.value.alias}}</h2>
-        <p>{{item.key}}</p>
-      </ion-label>
-      <ion-note slot="end" [color]="item.value.status ? 'success' : 'medium'">
-        {{item.value.status ? '在线' : '离线'}}
-      </ion-note>
-    </ion-item>
+    <ion-item-group *ngFor="let item of cameraMap | keyvalue">
+      <ion-item lines="none"  button detail="false" (click)="openDevice(item.key)">
+        <ion-avatar slot="start">
+          <img src="./assets/img/camera.png" />
+        </ion-avatar>
+        <ion-label>
+          <h2>{{item.value.alias}}</h2>
+          <p>{{item.key}}</p>
+        </ion-label>
+        <ion-icon name="chevron-down-outline" size="small" slot="end" *ngIf="showMap.get(item.key)"></ion-icon>
+        <ion-icon name="chevron-forward-outline" size="small" slot="end" *ngIf="!showMap.get(item.key)"></ion-icon>
+      </ion-item>
+      <ion-card *ngIf="showMap.get(item.key) && item.value.streams.length !== 0">
+        <ion-item lines="none" button detail *ngFor="let stream of item.value.streams" (click)="getCameraDetailsPage(item.value, stream)">
+          <ion-label>
+            <h2>{{stream.alias}}</h2>
+            <h3>{{stream.streamId}}</h3>
+            <p>{{stream.width}}*{{stream.height}}</p>
+          </ion-label>
+          <ion-note slot="end" [color]="stream.status ? 'success' : 'medium'">
+            {{stream.status ? '在线' : '离线'}}
+          </ion-note>
+        </ion-item>
+      </ion-card>
+    </ion-item-group>
+
 
   </ion-list>
 </ion-content>

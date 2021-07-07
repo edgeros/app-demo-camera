@@ -12,21 +12,32 @@ export class HomePage {
 
   // 设备列表
   cameraMap = new Map<string, Camera>();
+  showMap = new Map<string, boolean>();
 
   constructor(
     private cameraService: CameraService,
     private permissionService: PermissionService
-    ) {
-      this.cameraService.getCameraMapChange().subscribe((data: Map<string, Camera>) => {
-        this.cameraMap = data;
+  ) {
+    this.cameraService.getCameraMapChange().subscribe((data: Map<string, Camera>) => {
+      this.cameraMap = data;
+      this.showMap.forEach((value, key) => {
+        if(!this.cameraMap.has(key)) {
+          this.showMap.delete(key);
+        }
       });
+      this.cameraMap.forEach((value, key) => {
+        if(!this.showMap.has(key)) {
+          this.showMap.set(key, false);
+        }
+      });
+    });
   }
 
   ngOnInit() {
     setTimeout(() => {
-      this.permissionService.updatePermission(()=>{
-        this.cameraService.getCameraList();
-      });     
+      this.permissionService.updatePermission(() => {
+        this.cameraService.getCameraList(2);
+      });
     }, 500);
   }
 
@@ -34,14 +45,18 @@ export class HomePage {
    * 进入某个设备详情页
    * @param camera 
    */
-  getCameraDetailsPage(camera: Camera) {
-    this.cameraService.getCameraDetails(camera);
+  getCameraDetailsPage(camera: Camera, stream: any) {
+    this.cameraService.getCameraDetails(camera, stream);
+  }
 
+  async openDevice(devId: string) {
+    await this.cameraService.openDevice(devId);
+    this.showMap.set(devId, !this.showMap.get(devId));
   }
 
   doRefresh(event) {
     setTimeout(() => {
-      this.cameraService.getCameraList();
+      this.cameraService.getCameraList(2);
       event.target.complete();
     }, 1000);
   }

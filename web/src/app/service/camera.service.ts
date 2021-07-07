@@ -1,6 +1,6 @@
 import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { Injectable } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { Router } from '@angular/router';
 import { edger } from '@edgeros/web-sdk';
 import {
   NavController
@@ -45,14 +45,13 @@ export class CameraService {
     private nav: NavController,
     private alertService: AlertService,
     private permissionService: PermissionService,
-    private activeRoute: ActivatedRoute,
     private stateService: StateService
   ) {
     edger.token().then((data: any) => {
       if (data) {
         this.payload = data;
       } else {
-        if(this.stateService.getActive()) {
+        if (this.stateService.getActive()) {
           edger.notify.warning('请先登录！');
         }
       }
@@ -64,7 +63,7 @@ export class CameraService {
       if (data) {
         this.payload = data;
       } else {
-        if(this.stateService.getActive()) {
+        if (this.stateService.getActive()) {
           edger.notify.warning('请先登录！');
         }
       }
@@ -77,20 +76,20 @@ export class CameraService {
    * 定时查询设备列表
    */
   timerGetCameraList() {
-    setInterval(() => this.getCameraList(), 5000);
+    setInterval(() => this.getCameraList(1), 5000);
   }
 
   /**
    * 查询设备列表
    */
-  getCameraList() {
+  getCameraList(search: number) {
     let permission = this.permissionService.isPermissions(['network']);
     if (permission) {
       this.http
-        .get('/api/list', { headers: this.getHttpHeaders() })
+        .get(`/api/list?search=${search}`, { headers: this.getHttpHeaders() })
         .subscribe((cameras: Camera[]) => {
           if (cameras.length === 0) {
-            if(this.stateService.getActive()) {
+            if (this.stateService.getActive()) {
               edger.notify.info(`暂无设备！`);
             }
           }
@@ -99,22 +98,11 @@ export class CameraService {
             this.cameraMap.set(value.devId, value);
           });
           this.cameraMapChange.next(this.cameraMap);
-          if (this.thisCamera) {
-            if (this.cameraMap.has(this.thisCamera.devId)) {
-              if (this.cameraMap.get(this.thisCamera.devId).status) {
-                this.thisCamera = this.cameraMap.get(this.thisCamera.devId);
-              } else {
-                this.lostAlertConfirm(
-                  `当前设备：${this.thisCamera.alias} 已下线！`
-                );
-                this.thisCamera = null;
-              }
-            } else {
-              this.lostAlertConfirm(
-                `当前设备：${this.thisCamera.alias} 已下线！`
-              );
-              this.thisCamera = null;
-            }
+          if (this.thisCamera && !this.cameraMap.has(this.thisCamera.devId)) {
+            this.lostAlertConfirm(
+              `当前设备：${this.thisCamera.alias} 已下线！`
+            );
+            this.thisCamera = null;
           }
         });
     }
@@ -125,14 +113,14 @@ export class CameraService {
    * 打开某个摄像头
    * @param camera 
    */
-  getCameraDetails(camera: Camera) {
+  getCameraDetails(camera: Camera, stream: any) {
     if (this.permissionService.isPermissions(['rtsp'])) {
       if (this.detailsLock) {
         return;
       }
       this.detailsLock = true;
       this.http
-        .get('/api/select/' + '?devId=' + camera.devId, {
+        .get(`/api/select?devId=${camera.devId}&streamId=${stream.streamId}`, {
           headers: this.getHttpHeaders(),
         })
         .subscribe(
@@ -140,8 +128,9 @@ export class CameraService {
             if (res.result) {
               if (res.login) {
                 this.detailsLock = false;
-                this.loginDevicePresentAlertPrompt(camera);
+                this.loginDevicePresentAlertPrompt(camera, stream);
               } else {
+                //拉取视频流
                 camera.videoUrl = res.videoUrl;
                 camera.enableMove = res.enableMove;
                 camera.autoMode = res.autoMode;
@@ -151,7 +140,7 @@ export class CameraService {
               }
             } else {
               this.detailsLock = false;
-              if(this.stateService.getActive()) {
+              if (this.stateService.getActive()) {
                 if (res.code === 50001) {
                   edger.notify.error(`流媒体启动失败，请检查权限！`);
                 } else if (res.code === 50002) {
@@ -197,6 +186,23 @@ export class CameraService {
     })
   }
 
+
+  getStreams(loginInfo: any) {
+    this.http.post('/api/streams', loginInfo, {
+      headers: this.getHttpHeaders(),
+    }).subscribe((streams: Array<any>) => {
+      if (streams.length === 0) {
+        edger.notify.error(`此设备不可用！`);
+      } else {
+        let camera = this.cameraMap.get(loginInfo.devId);
+        camera.streams = streams;
+        this.cameraMapChange.next(this.cameraMap);
+      }
+    }, error => {
+      console.log(error);
+    });
+  }
+
   /**
    * 登录设备
    * @param loginInfo 
@@ -206,6 +212,7 @@ export class CameraService {
     this.http.post('/api/login', loginInfo, { headers: this.getHttpHeaders() }).subscribe((res: any) => {
       console.log(res);
       if (res.result) {
+        // 拉取视频流
         camera.videoUrl = res.videoUrl;
         camera.enableMove = res.enableMove;
         camera.autoMode = res.autoMode;
@@ -213,7 +220,7 @@ export class CameraService {
         this.router.navigate(['/details', camera]);
       } else {
         this.detailsLock = false;
-        if(this.stateService.getActive()) {
+        if (this.stateService.getActive()) {
           if (res.code === 50001) {
             edger.notify.error(`流媒体启动失败，请检查权限！`);
           } else if (res.code === 50002) {
@@ -233,11 +240,22 @@ export class CameraService {
    * 登录框
    * @param camera 
    */
-  async loginDevicePresentAlertPrompt(camera: Camera) {
-    this.alertService.loginDevicePresentAlertPrompt(camera, (loginInfo) => {
+  async loginDevicePresentAlertPrompt(camera: Camera, stream: any) {
+    this.alertService.loginRtspStream(camera, stream, (loginInfo) => {
       this.detailsLock = true;
       this.loginDevice(loginInfo, camera);
     });
+  }
+
+ async openDevice(devId: string) {
+    if (this.permissionService.isPermissions(['rtsp'])) {
+      let camera = this.cameraMap.get(devId);
+      if (camera.streams === undefined || camera.streams.length === 0) {
+        await this.alertService.loginDevicePresentAlertPrompt(this.cameraMap.get(devId), (loginInfo) => {
+          this.getStreams(loginInfo);
+        })
+      }
+    }
   }
 
   getPayload(): any {

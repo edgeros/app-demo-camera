@@ -10,13 +10,14 @@
  *
  */
 
-var WebApp = require('webapp');
-var util = require('./util');
+const WebApp = require('webapp');
+const util = require('./util');
+var bodyParser = require('middleware').bodyParser;
 
 /* 
  * WebApp.
  */
-var app = WebApp.createApp();
+const app = WebApp.createApp();
 
 /*
  * Set static path.
@@ -47,7 +48,7 @@ function createMediaSer() {
 				{ifname: ifnames.wan, localPort: 0}
 			],
 			mediaTimeout: 1800000,
-			searchCycle: 20000
+			searchCycle: 60000
 		});
 		console.log('Create media server success.');
 		return server;
@@ -104,8 +105,9 @@ Task.nextTick(() => {
 });
 
 /* 
+ * get /api/list ?search = 1 | 2: auto search.
  * req: null
- * res: [{devId, alias, report, status}...]
+ * res: [{devId, alias, report, streams: [{streamId, alias, width, height, status}...]}...]
  */
 app.get('/api/list', async (req, res) => {
 	if (!server) {
@@ -115,12 +117,37 @@ app.get('/api/list', async (req, res) => {
 			return res.json([]);
 		}
 	}
-	var devs = server.getMediaList();
-	res.send(JSON.stringify(devs));
+	var search = req.query.search;
+	server.getDevList(search == 2, (devs) => {
+		res.json(devs);
+	});
+});
+
+/* 
+ * post /api/streams
+ * req: {devId, username, password}
+ * res: [{streamId, alias, width, height, status}...]
+ */
+app.post('/api/streams', bodyParser.json(), async (req, res) => {
+	if (!server) {
+		try {
+			await startServer();
+		} catch (err) {
+			return res.json([]);
+		}
+	}
+	var devId = req.body.devId;
+	if (!devId) {
+		return res.json([]);
+	}
+	server.getStreams(devId, req.body, (streams) => {
+		res.json(streams);
+	});
 });
 
 /*
- * req: devId
+ * get /api/select ?devId & streamId
+ * req: null
  * res: {result, msg, login, videoUrl, enableMove, autoMode}
  */
 app.get('/api/select', async (req, res) => {
@@ -144,18 +171,19 @@ app.get('/api/select', async (req, res) => {
 	}
 
 	var ret = {result: false, code: 20000, msg: 'error', login: false};
-	var deviceId = req.query.devId;
-	if (!deviceId) {
-		ret.msg = `无效的设备: ${deviceId}`;
+	var devId = req.query.devId;
+	var token = req.query.streamId;
+	if (!devId) {
+		ret.msg = `无效的设备: ${devId}`;
 		ret.code = 50002;
 		console.warn(ret.msg);
-		res.send(JSON.stringify(ret));
+		res.json(ret);
 		return;
 	}
 
-	server.selectMedia(deviceId, (media) => {
+	server.loginMedia(devId, token, null, (media) => {
 		if (media instanceof Error) {
-			ret.msg = `无效的设备: ${deviceId}`;
+			ret.msg = `无效的设备: ${devId}`;
 			ret.code = 50002;
 			console.warn(ret.msg);
 		} else if (!media) {
@@ -169,15 +197,16 @@ app.get('/api/select', async (req, res) => {
 			ret.enableMove = media.enableMove;
 			ret.autoMode = media.autoMove;
 		}
-		res.send(JSON.stringify(ret));
+		res.json(ret);
 	});
 });
 
 /*
- * req: {devId, username, password}
+ * post: /api/login
+ * req: {devId, streamId, username, password}
  * res: {result, msg, videoUrl, enableMove, autoMove}
  */
-app.post('/api/login', (req, res) => {
+app.post('/api/login', bodyParser.json(), async (req, res) => {
 	console.log('Recv camera-login message.');
 	if (!server) {
 		return res.json({
@@ -188,53 +217,43 @@ app.post('/api/login', (req, res) => {
 	}
 
 	var ret = {result: false, code: 20000, msg: 'error'};
-	var data = [];
-	req.on('data', (buf) => {
-		data.push(buf);
-	});
-
-	req.on('end', async () => {
-		try {
-			await util.checkPerm(['rtsp']);
-			data = Buffer.concat(data);
-			var info = JSON.parse(data.toString());
-			var deviceId = info.devId;
-			if (!deviceId) {
-				ret.msg = `无效的设备: ${deviceId}`;
-				ret.code =  50002;
-				console.warn(ret.msg);
-				res.send(JSON.stringify(ret));
-				return;
-			}
-
-			server.loginMedia(info, (media) => {
-				if (!media || media instanceof Error) {
-					ret.msg = `设备 ${deviceId} 登录失败！`;
-					ret.code = 50003;
-					console.warn(ret.msg);
-				} else {
-					ret.result = true;
-					ret.msg = 'ok';
-					ret.videoUrl = '/' + media.sid;
-					ret.enableMove = media.enableMove;
-					ret.autoMode = media.autoMove;
-				}
-				res.send(JSON.stringify(ret));
-			});
-
-		} catch(e) {
-			ret.result = false;
-			ret.msg = e.message;
+	var info = req.body;
+	try {
+		await util.checkPerm(['rtsp']);
+		var devId = info.devId;
+		if (!devId) {
+			ret.msg = `无效的设备: ${devId}`;
+			ret.code =  50002;
 			console.warn(ret.msg);
-			res.send(JSON.stringify(ret));
-			return;
+			res.json(ret);
+			return;     
 		}
-	});
+
+		server.loginMedia(devId, info.streamId, info, (media) => {
+			if (!media || media instanceof Error) {
+				ret.msg = `设备 ${devId} 登录失败！`;
+				ret.code = 50003;
+				console.warn(ret.msg);
+			} else {
+				ret.result = true;
+				ret.msg = 'ok';
+				ret.videoUrl = '/' + media.sid;
+				ret.enableMove = media.enableMove;
+				ret.autoMode = media.autoMove;
+			}
+			res.json(ret);
+		});
+
+	} catch(e) {
+		ret.result = false;
+		ret.msg = e.message;
+		console.warn(ret.msg);
+		res.json(ret);
+		return;
+	}
 });
 
-/*
- * app start
- */
+/* app start. */
 app.start();
 
 /* Event loop. */

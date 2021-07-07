@@ -6,4 +6,5 @@ export interface Camera {
     videoUrl: string;
     enableMove: boolean;
     autoMode: boolean;
+    streams: Array<any>;
 }

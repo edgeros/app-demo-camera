@@ -16,9 +16,7 @@
 .canvas-wrapper {
   position: relative;
   width: 360px;
-  // width: 100%;
   height: 202px;
-  // border: 1px solid black;
 }
 #video {
   top: 0;
@@ -108,9 +106,9 @@ ion-range {
   border-radius: 50%;
 }
 .float-top {
-  position: fixed;
+  position: absolute;
   opacity: 0.3;
-  top: 50px;
+  top: 20px;
   left: 0;
   right: 0;
   z-index: 9999;
@@ -119,11 +117,7 @@ ion-range {
 #side {
   position: fixed;
   width: 70px;
-  // height: $sideHeight ;
   left: -70px;
-  // display: grid;
-  // grid-column: 70px;
-  // grid-row: repeat(6, 16.66%);
   float: left;
   transition: left 300ms;
   z-index: 9999;
@@ -132,7 +126,6 @@ ion-range {
 
 .parentSide {
   width: 70px;
-  // height: 600px;
   position: relative;
   overflow: hidden;
 }
@@ -140,9 +133,6 @@ ion-range {
 #side .rotate {
   transform: rotate(90deg);
 }
-.item {
-}
-
 #parent {
   width: 100%;
   height: 300px;

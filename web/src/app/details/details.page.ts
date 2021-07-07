@@ -44,6 +44,7 @@ export class DetailsPage implements OnInit {
     videoUrl: "none",
     enableMove: false,
     autoMode: false,
+    streams: []
   };
 
   // 视频播放器插件
