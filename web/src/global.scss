@@ -28,3 +28,7 @@
 .safe-area-top {
   padding-top: var(--edger-safe-area-inset-top);
 }
+
+ion-header ion-toolbar:first-of-type { 
+  padding-top:var(--edger-safe-area-inset-top, 0) 
+}
